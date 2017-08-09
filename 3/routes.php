@@ -1,0 +1,67 @@
+<?php
+
+add_filter( 'do_parse_request', 'showcaseidx_parse_request', -10, 2 );
+function showcaseidx_parse_request( $bool, WP $wp ) {
+  $url = parse_url( $_SERVER['REQUEST_URI'] );
+  $home_url = parse_url( get_home_url() );
+  $base = isset( $home_url['path'] ) ? '/' . trim( $home_url['path'], '/') . '/' : '/';
+
+  // XML Sitemaps
+  if ( preg_match( '#^' . $base . get_option( 'showcaseidx_search_page' ) . '/xmlsitemap/(\d*/)?$#', $url['path'], $matches ) ) {
+
+    header( 'Content-Type: application/xml' );
+    print showcaseidx_get_xmlsitemap( isset( $matches[1] ) ? $matches[1] : null );
+    exit;
+  }
+
+  // Session Cookie Image
+  if ( preg_match( '#^' . $base . get_option( 'showcaseidx_search_page' ) . '/signin/(.*)#', $url['path'], $matches ) ) {
+
+    showcaseidx_get_signin_image( $matches[1] );
+  }
+
+  // Default Search Page
+  if ( preg_match( '#^' . $base . get_option( 'showcaseidx_search_page' ) . '($|/.*)#', $url['path'], $matches ) ) {
+
+    $path = $matches[1];
+    $query = !isset( $url['query'] ) ?: $url['query'];
+
+    if ( $path == '' ) {
+      header( "HTTP/1.1 301 Moved Permanently" );
+      header( "Location: " . get_home_url() . '/' . get_option( 'showcaseidx_search_page' ) . '/' );
+      exit;
+    }
+
+    showcase_render_search_page( $wp, $path, $query );
+  }
+
+  return $bool;
+}
+
+function showcaseidx_get_xmlsitemap( $page = '' ) {
+  $website_uuid = get_option( 'showcaseidx_website_uuid' );
+  $api_url = SHOWCASEIDX_SEARCH_HOST . '/app/xmlsitemap/';
+
+  $response = wp_remote_get( $api_url . $website_uuid . '/' . $page, array( 'timeout' => 5, 'httpversion' => '1.1' ) );
+
+  if ( wp_remote_retrieve_response_code( $response ) == 200 ) {
+    return wp_remote_retrieve_body( $response );
+  } else {
+    return '';
+  }
+}
+
+function showcaseidx_get_signin_image( $lead_uuid ) {
+  $website_uuid = get_option( 'showcaseidx_website_uuid' );
+  $api_url = SHOWCASEIDX_SEARCH_HOST . '/app/signin/image/';
+
+  $response = wp_remote_get( $api_url . $lead_uuid, array( 'timeout' => 5, 'httpversion' => '1.1' ) );
+
+  if ( wp_remote_retrieve_response_code( $response ) == 200 ) {
+    header( 'Set-Cookie: ' . wp_remote_retrieve_header( $response, 'set-cookie' ) );
+    header( 'Content-Type: '. wp_remote_retrieve_header( $response, 'content-type' ) );
+
+    print wp_remote_retrieve_body( $response );
+    exit;
+  }
+}
